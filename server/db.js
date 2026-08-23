@@ -6,19 +6,38 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
+let dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
+if (dbUrl) {
+  dbUrl = dbUrl.trim().replace(/^["']|["']$/g, '');
+}
+
 const isPostgres = Boolean(dbUrl);
 
 let sqliteDb = null;
 let pgPool = null;
 
 if (isPostgres) {
-  pgPool = new pg.Pool({
-    connectionString: dbUrl,
-    ssl: {
-      rejectUnauthorized: false
-    }
-  });
+  try {
+    const parsedUrl = new URL(dbUrl);
+    pgPool = new pg.Pool({
+      host: parsedUrl.hostname,
+      port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 5432,
+      user: decodeURIComponent(parsedUrl.username),
+      password: decodeURIComponent(parsedUrl.password),
+      database: parsedUrl.pathname.replace(/^\//, '') || 'postgres',
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+  } catch (urlErr) {
+    console.warn('Failed to parse DATABASE_URL with URL(), falling back to connectionString:', urlErr);
+    pgPool = new pg.Pool({
+      connectionString: dbUrl,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+  }
 } else {
   const dbPath = path.resolve(__dirname, '../society_complaints.db');
   const sqlite = sqlite3.verbose();
