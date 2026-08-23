@@ -17,14 +17,38 @@ let sqliteDb = null;
 let pgPool = null;
 export let connectionDebugInfo = 'Using local SQLite';
 
+function parseDbUrl(urlStr) {
+  // Handles passwords starting with '/' or containing special chars before '@'
+  const regex = /^postgres(?:ql)?:\/\/([^:]+):(.*)@([^:/]+)(?::(\d+))?\/(.+)$/;
+  const match = urlStr.match(regex);
+  if (match) {
+    let user = match[1];
+    let password = match[2];
+    let host = match[3];
+    let port = match[4] ? parseInt(match[4], 10) : 5432;
+    let database = match[5];
+
+    try { user = decodeURIComponent(user); } catch (e) {}
+    try { password = decodeURIComponent(password); } catch (e) {}
+    try { database = decodeURIComponent(database); } catch (e) {}
+
+    return { user, password, host, port, database };
+  }
+
+  // Fallback to standard URL parser
+  const parsedUrl = new URL(urlStr);
+  return {
+    user: decodeURIComponent(parsedUrl.username),
+    password: decodeURIComponent(parsedUrl.password),
+    host: parsedUrl.hostname,
+    port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 5432,
+    database: parsedUrl.pathname.replace(/^\//, '') || 'postgres'
+  };
+}
+
 if (isPostgres) {
   try {
-    const parsedUrl = new URL(dbUrl);
-    const host = parsedUrl.hostname;
-    const port = parsedUrl.port ? parseInt(parsedUrl.port, 10) : 5432;
-    const user = decodeURIComponent(parsedUrl.username);
-    const password = decodeURIComponent(parsedUrl.password);
-    const database = parsedUrl.pathname.replace(/^\//, '') || 'postgres';
+    const { user, password, host, port, database } = parseDbUrl(dbUrl);
 
     connectionDebugInfo = `[PostgreSQL Mode] Host: '${host}', Port: ${port}, User: '${user}', DB: '${database}'`;
 
