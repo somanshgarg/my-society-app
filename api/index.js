@@ -13,13 +13,17 @@ app.use(express.json());
 
 // Initialize DB schema on cold start
 let isDbInitialized = false;
+let dbInitError = null;
+
 app.use(async (req, res, next) => {
   if (!isDbInitialized) {
     try {
       await initDb();
       isDbInitialized = true;
+      dbInitError = null;
     } catch (err) {
       console.error('Failed to initialize database on cold start:', err);
+      dbInitError = err.message;
     }
   }
   next();
@@ -28,6 +32,10 @@ app.use(async (req, res, next) => {
 // 1. Submit Complaint (Resident Flow)
 app.post('/api/complaints', async (req, res) => {
   try {
+    if (dbInitError) {
+      return res.status(500).json({ error: `Database Connection/Initialization Error: ${dbInitError}` });
+    }
+
     const { flat_number, description, apiKey } = req.body;
 
     if (!flat_number || !flat_number.trim()) {
@@ -58,12 +66,21 @@ app.post('/api/complaints', async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      complaint: inserted,
+      complaint: inserted || {
+        id: result.lastID,
+        flat_number: flat_number.trim().toUpperCase(),
+        description: description.trim(),
+        category: aiResult.category,
+        urgency: aiResult.urgency,
+        ai_drafted_response: aiResult.ai_drafted_response,
+        status: 'Open',
+        created_at: new Date().toISOString()
+      },
       aiSource: aiResult.source
     });
   } catch (err) {
     console.error('Error submitting complaint:', err);
-    return res.status(500).json({ error: 'Internal server error processing complaint.' });
+    return res.status(500).json({ error: err.message || 'Internal server error processing complaint.' });
   }
 });
 
@@ -109,7 +126,7 @@ app.get('/api/complaints', async (req, res) => {
     return res.json({ complaints: rows });
   } catch (err) {
     console.error('Error fetching complaints:', err);
-    return res.status(500).json({ error: 'Internal server error fetching complaints.' });
+    return res.status(500).json({ error: err.message || 'Internal server error fetching complaints.' });
   }
 });
 
@@ -122,7 +139,7 @@ app.get('/api/complaints/:id', async (req, res) => {
     }
     return res.json({ complaint });
   } catch (err) {
-    return res.status(500).json({ error: 'Error fetching complaint.' });
+    return res.status(500).json({ error: err.message || 'Error fetching complaint.' });
   }
 });
 
@@ -162,7 +179,7 @@ app.patch('/api/complaints/:id', async (req, res) => {
     return res.json({ success: true, complaint: updated });
   } catch (err) {
     console.error('Error updating complaint:', err);
-    return res.status(500).json({ error: 'Failed to update complaint.' });
+    return res.status(500).json({ error: err.message || 'Failed to update complaint.' });
   }
 });
 
@@ -178,7 +195,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid admin username or password.' });
     }
   } catch (err) {
-    return res.status(500).json({ error: 'Authentication error.' });
+    return res.status(500).json({ error: err.message || 'Authentication error.' });
   }
 });
 
@@ -201,7 +218,7 @@ app.get('/api/stats', async (req, res) => {
       }
     });
   } catch (err) {
-    return res.status(500).json({ error: 'Error fetching stats.' });
+    return res.status(500).json({ error: err.message || 'Error fetching stats.' });
   }
 });
 
