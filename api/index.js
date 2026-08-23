@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { runSql, getSql, allSql, initDb } from '../server/db.js';
+import { runSql, getSql, allSql, initDb, connectionDebugInfo } from '../server/db.js';
 import { triageComplaint } from '../server/ai.js';
 
 dotenv.config();
@@ -33,7 +33,7 @@ app.use(async (req, res, next) => {
 app.post('/api/complaints', async (req, res) => {
   try {
     if (dbInitError) {
-      return res.status(500).json({ error: `Database Connection/Initialization Error: ${dbInitError}` });
+      return res.status(500).json({ error: `DB Init Error: ${dbInitError} (${connectionDebugInfo})` });
     }
 
     const { flat_number, description, apiKey } = req.body;
@@ -80,13 +80,17 @@ app.post('/api/complaints', async (req, res) => {
     });
   } catch (err) {
     console.error('Error submitting complaint:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error processing complaint.' });
+    return res.status(500).json({ error: `${err.message} (${connectionDebugInfo})` });
   }
 });
 
 // 2. Fetch Complaints (Admin / Resident)
 app.get('/api/complaints', async (req, res) => {
   try {
+    if (dbInitError) {
+      return res.status(500).json({ error: `DB Init Error: ${dbInitError} (${connectionDebugInfo})` });
+    }
+
     const { flat_number, status, category, search } = req.query;
 
     let sql = 'SELECT * FROM complaints WHERE 1=1';
@@ -126,7 +130,7 @@ app.get('/api/complaints', async (req, res) => {
     return res.json({ complaints: rows });
   } catch (err) {
     console.error('Error fetching complaints:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error fetching complaints.' });
+    return res.status(500).json({ error: `${err.message} (${connectionDebugInfo})` });
   }
 });
 
@@ -139,7 +143,7 @@ app.get('/api/complaints/:id', async (req, res) => {
     }
     return res.json({ complaint });
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Error fetching complaint.' });
+    return res.status(500).json({ error: `${err.message} (${connectionDebugInfo})` });
   }
 });
 
@@ -179,7 +183,7 @@ app.patch('/api/complaints/:id', async (req, res) => {
     return res.json({ success: true, complaint: updated });
   } catch (err) {
     console.error('Error updating complaint:', err);
-    return res.status(500).json({ error: err.message || 'Failed to update complaint.' });
+    return res.status(500).json({ error: `${err.message} (${connectionDebugInfo})` });
   }
 });
 
@@ -195,7 +199,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid admin username or password.' });
     }
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Authentication error.' });
+    return res.status(500).json({ error: `${err.message} (${connectionDebugInfo})` });
   }
 });
 
@@ -218,7 +222,7 @@ app.get('/api/stats', async (req, res) => {
       }
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Error fetching stats.' });
+    return res.status(500).json({ error: `${err.message} (${connectionDebugInfo})` });
   }
 });
 

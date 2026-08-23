@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
+let dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL || process.env.POSTGRES_URL;
 if (dbUrl) {
   dbUrl = dbUrl.trim().replace(/^["']|["']$/g, '');
 }
@@ -15,22 +15,31 @@ const isPostgres = Boolean(dbUrl);
 
 let sqliteDb = null;
 let pgPool = null;
+export let connectionDebugInfo = 'Using local SQLite';
 
 if (isPostgres) {
   try {
     const parsedUrl = new URL(dbUrl);
+    const host = parsedUrl.hostname;
+    const port = parsedUrl.port ? parseInt(parsedUrl.port, 10) : 5432;
+    const user = decodeURIComponent(parsedUrl.username);
+    const password = decodeURIComponent(parsedUrl.password);
+    const database = parsedUrl.pathname.replace(/^\//, '') || 'postgres';
+
+    connectionDebugInfo = `[PostgreSQL Mode] Host: '${host}', Port: ${port}, User: '${user}', DB: '${database}'`;
+
     pgPool = new pg.Pool({
-      host: parsedUrl.hostname,
-      port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 5432,
-      user: decodeURIComponent(parsedUrl.username),
-      password: decodeURIComponent(parsedUrl.password),
-      database: parsedUrl.pathname.replace(/^\//, '') || 'postgres',
+      host,
+      port,
+      user,
+      password,
+      database,
       ssl: {
         rejectUnauthorized: false
       }
     });
   } catch (urlErr) {
-    console.warn('Failed to parse DATABASE_URL with URL(), falling back to connectionString:', urlErr);
+    connectionDebugInfo = `[PostgreSQL Mode Raw] Error parsing URL: ${urlErr.message}`;
     pgPool = new pg.Pool({
       connectionString: dbUrl,
       ssl: {
@@ -42,6 +51,7 @@ if (isPostgres) {
   const dbPath = path.resolve(__dirname, '../society_complaints.db');
   const sqlite = sqlite3.verbose();
   sqliteDb = new sqlite.Database(dbPath);
+  connectionDebugInfo = '[SQLite Mode] Local society_complaints.db';
 }
 
 // Convert ? to $1, $2, etc. for PostgreSQL
